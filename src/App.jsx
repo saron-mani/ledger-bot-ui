@@ -48,7 +48,7 @@ function App() {
     setAnalyzing(true);
     try {
       // ⚠️ PUT YOUR BACKEND WORKER URL HERE
-      const response = await fetch('https://YOUR_WORKER_URL.workers.dev/api/analyze', {
+      const response = await fetch('https://ledger-online-bot.saron2code.workers.dev', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expenses })
