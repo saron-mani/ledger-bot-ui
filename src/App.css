@@ -1,3 +1,72 @@
+/* Reset and Base Theme */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--tg-theme-bg-color, #f9fafb);
+  color: var(--tg-theme-text-color, #1f2937);
+}
+
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.card {
+  background-color: var(--tg-theme-secondary-bg-color, #ffffff);
+  border-radius: 1rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  color: var(--tg-theme-hint-color, #6b7280);
+  font-size: 1rem;
+}
+
+/* Summary & Chart */
+.summary-box {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: var(--tg-theme-bg-color, #f3f4f6);
+  border-radius: 0.75rem;
+}
+
+.summary-box h2 {
+  font-size: 0.875rem;
+  color: var(--tg-theme-hint-color, #6b7280);
+  margin-bottom: 0.25rem;
+}
+
+.total-amount {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--tg-theme-text-color, #1f2937);
+}
+
+.chart-container {
+  margin-top: 1.5rem;
+  width: 100%;
+}
+
+/* AI Analysis Section */
 .ai-box {
   margin-top: 1.5rem;
   padding: 1rem;
@@ -27,4 +96,37 @@
   font-size: 0.9rem;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+/* Recent Transactions */
+.recent-transactions {
+  margin-top: 2rem;
+  text-align: left;
+}
+
+.recent-transactions h3 {
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+  color: var(--tg-theme-hint-color, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.transaction-list {
+  list-style: none;
+}
+
+.transaction-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgba(107, 114, 128, 0.2);
+}
+
+.transaction-item:last-child {
+  border-bottom: none;
+}
+
+.transaction-amount {
+  font-weight: 600;
 }

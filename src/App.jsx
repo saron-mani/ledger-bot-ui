@@ -8,28 +8,27 @@ const SUPABASE_URL = 'https://aawelgmbvxqzdzxazjyg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhd2VsZ21idnhxemR6eGF6anlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MDExOTAsImV4cCI6MjEwNzQ3NzE5MH0.Vp-b6pZc0gJxxrYvTPjsxmAiLgR7sYPoB5h32XNrjTM';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Colors for the Pie Chart matching standard financial tracking apps
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28'];
 
 function App() {
   const [tgUser, setTgUser] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // AI State Variables
+  const [aiAnalysis, setAiAnalysis] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
 
   useEffect(() => {
-    // 1. Initialize Telegram Web App
     const tg = window.Telegram.WebApp;
     tg.ready();
     tg.expand(); 
 
-    // 2. Identify the user
     let username = 'Anonymous';
     if (tg.initDataUnsafe?.user) {
       username = tg.initDataUnsafe.user.username || tg.initDataUnsafe.user.first_name;
     }
     setTgUser(username);
-
-    // 3. Fetch their data
     fetchExpenses(username);
   }, []);
 
@@ -40,29 +39,39 @@ function App() {
       .eq('username', username)
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setExpenses(data);
-    } else if (error) {
-      console.error("Database Error:", error);
-    }
+    if (!error && data) setExpenses(data);
     setLoading(false);
   }
 
-  // --- DATA PROCESSING FOR UI ---
-  
-  // Calculate total spent by account (SIB, Cash, SBI)
+  // AI Fetch Function
+  async function generateAnalysis() {
+    setAnalyzing(true);
+    try {
+      // ⚠️ PUT YOUR BACKEND WORKER URL HERE
+      const response = await fetch('https://YOUR_WORKER_URL.workers.dev/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expenses })
+      });
+      
+      const data = await response.json();
+      setAiAnalysis(data.analysis);
+    } catch (err) {
+      setAiAnalysis('Failed to generate analysis. Check console.');
+    }
+    setAnalyzing(false);
+  }
+
   const accountTotals = expenses.reduce((acc, curr) => {
     acc[curr.account] = (acc[curr.account] || 0) + curr.amount;
     return acc;
   }, {});
 
-  // Format data for Recharts PieChart
   const chartData = Object.keys(accountTotals).map(key => ({
     name: key,
     value: accountTotals[key]
   }));
 
-  // Calculate overall grand total
   const grandTotal = chartData.reduce((sum, item) => sum + item.value, 0);
 
   return (
@@ -80,9 +89,24 @@ function App() {
             <div className="summary-box">
               <h2>Total Spent</h2>
               <p className="total-amount">₹{grandTotal.toFixed(2)}</p>
+              
+              {/* AI Button & Output Box */}
+              <button 
+                className="ai-button" 
+                onClick={generateAnalysis} 
+                disabled={analyzing || expenses.length === 0}
+              >
+                {analyzing ? 'Analyzing...' : '✨ Generate AI Insights'}
+              </button>
+              
+              {aiAnalysis && (
+                <div className="ai-box">
+                  <p className="ai-text">{aiAnalysis}</p>
+                </div>
+              )}
             </div>
 
-            {chartData.length > 0 ? (
+            {chartData.length > 0 && (
               <div className="chart-container">
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
@@ -101,10 +125,6 @@ function App() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-            ) : (
-              <p style={{ marginTop: '20px', color: 'var(--tg-theme-hint-color)' }}>
-                No expenses logged yet! Type an expense in the chat to see it here.
-              </p>
             )}
 
             <div className="recent-transactions">
