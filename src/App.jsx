@@ -4,8 +4,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import './App.css';
 
 // ⚠️ REPLACE THESE WITH YOUR ACTUAL SUPABASE CREDENTIALS
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://aawelgmbvxqzdzxazjyg.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhd2VsZ21idnhxemR6eGF6anlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MDExOTAsImV4cCI6MjEwNzQ3NzE5MH0.Vp-b6pZc0gJxxrYvTPjsxmAiLgR7sYPoB5h32XNrjTM';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Colors for the Pie Chart matching standard financial tracking apps
