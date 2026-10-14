@@ -14,10 +14,19 @@ const inr = (n, dp = 2) => Number(n || 0).toLocaleString('en-IN', { minimumFract
 const shortDate = (iso) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
 // Check if a database timestamp matches today in India
-const isToday = (iso) => {
-  const d = new Date(iso).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const t = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
-  return d === t;
+// Strict 12:00 AM to 11:59 PM boundary check in Indian Standard Time (IST)
+const isToday = (isoString) => {
+  const now = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Kolkata"}));
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  
+  // Create strict timestamps for 12:00:00 AM and 11:59:59 PM in IST
+  const todayStart = new Date(`${year}-${month}-${day}T00:00:00+05:30`).getTime();
+  const todayEnd = new Date(`${year}-${month}-${day}T23:59:59+05:30`).getTime();
+  
+  const expTime = new Date(isoString).getTime();
+  return expTime >= todayStart && expTime <= todayEnd;
 };
 
 function toSlices(list) {
