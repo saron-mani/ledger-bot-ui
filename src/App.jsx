@@ -1,23 +1,24 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import './App.css';
 
-// ⚠️ REPLACE THESE WITH YOUR ACTUAL SUPABASE CREDENTIALS
-const SUPABASE_URL = 'https://aawelgmbvxqzdzxazjyg.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhd2VsZ21idnhxemR6eGF6anlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MDExOTAsImV4cCI6MjEwNzQ3NzE5MH0.Vp-b6pZc0gJxxrYvTPjsxmAiLgR7sYPoB5h32XNrjTM';
+// ⚠️ KEEP YOUR SUPABASE CREDENTIALS HERE
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28'];
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#A28DFF'];
 
 function App() {
   const [tgUser, setTgUser] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // AI State Variables
-  const [aiAnalysis, setAiAnalysis] = useState('');
+  // New AI Chart States
+  const [aiChartData, setAiChartData] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [aiError, setAiError] = useState('');
 
   useEffect(() => {
     const tg = window.Telegram.WebApp;
@@ -43,21 +44,33 @@ function App() {
     setLoading(false);
   }
 
-  // AI Fetch Function
-  async function generateAnalysis() {
+  // Updated Fetch Function for JSON processing
+  async function categorizeExpenses() {
     setAnalyzing(true);
+    setAiError('');
     try {
-      // ⚠️ PUT YOUR BACKEND WORKER URL HERE
-      const response = await fetch('https://ledger-online-bot.saron2code.workers.dev', {
+      const response = await fetch('https://ledger-online-bot.saron2code.workers.dev/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expenses })
       });
       
       const data = await response.json();
-      setAiAnalysis(data.analysis);
+      
+      // LLMs occasionally wrap responses in markdown (```json ... ```). This cleans it up.
+      const cleanString = data.analysis.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsedData = JSON.parse(cleanString);
+      
+      // Convert {"Food": 150, "Transport": 20} into Recharts format
+      const formattedForChart = Object.keys(parsedData).map(key => ({
+        name: key,
+        value: Number(parsedData[key])
+      }));
+
+      setAiChartData(formattedForChart);
     } catch (err) {
-      setAiAnalysis('Failed to generate analysis. Check console.');
+      setAiError('Failed to parse AI categories. Please try again.');
+      console.error(err);
     }
     setAnalyzing(false);
   }
@@ -67,12 +80,12 @@ function App() {
     return acc;
   }, {});
 
-  const chartData = Object.keys(accountTotals).map(key => ({
+  const standardChartData = Object.keys(accountTotals).map(key => ({
     name: key,
     value: accountTotals[key]
   }));
 
-  const grandTotal = chartData.reduce((sum, item) => sum + item.value, 0);
+  const grandTotal = standardChartData.reduce((sum, item) => sum + item.value, 0);
 
   return (
     <div className="app-container">
@@ -90,34 +103,55 @@ function App() {
               <h2>Total Spent</h2>
               <p className="total-amount">₹{grandTotal.toFixed(2)}</p>
               
-              {/* AI Button & Output Box */}
               <button 
                 className="ai-button" 
-                onClick={generateAnalysis} 
+                onClick={categorizeExpenses} 
                 disabled={analyzing || expenses.length === 0}
               >
-                {analyzing ? 'Analyzing...' : '✨ Generate AI Insights'}
+                {analyzing ? 'Processing...' : '🤖 AI Categorization'}
               </button>
-              
-              {aiAnalysis && (
-                <div className="ai-box">
-                  <p className="ai-text">{aiAnalysis}</p>
-                </div>
-              )}
+
+              {aiError && <p style={{ color: '#ef4444', marginTop: '10px', fontSize: '0.875rem' }}>{aiError}</p>}
             </div>
 
-            {chartData.length > 0 && (
-              <div className="chart-container">
+            {/* AI Generated Category Chart */}
+            {aiChartData && (
+              <div className="chart-container" style={{ marginTop: '1rem' }}>
+                <h3 style={{ fontSize: '0.875rem', color: 'var(--tg-theme-hint-color)', marginBottom: '0.5rem' }}>Smart Categories</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={aiChartData}
+                      innerRadius={50}
+                      outerRadius={70}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {aiChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => `₹${value}`} />
+                    <Legend verticalAlign="bottom" height={36} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Standard Account Chart */}
+            {!aiChartData && standardChartData.length > 0 && (
+               <div className="chart-container" style={{ marginTop: '1rem' }}>
+                 <h3 style={{ fontSize: '0.875rem', color: 'var(--tg-theme-hint-color)', marginBottom: '0.5rem' }}>By Account</h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie
-                      data={chartData}
+                      data={standardChartData}
                       innerRadius={60}
                       outerRadius={80}
                       paddingAngle={5}
                       dataKey="value"
                     >
-                      {chartData.map((entry, index) => (
+                      {standardChartData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
