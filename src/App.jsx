@@ -7,24 +7,19 @@ const SUPABASE_URL = 'https://aawelgmbvxqzdzxazjyg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhd2VsZ21idnhxemR6eGF6anlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MDExOTAsImV4cCI6MjEwNzQ3NzE5MH0.Vp-b6pZc0gJxxrYvTPjsxmAiLgR7sYPoB5h32XNrjTM';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Muted, earthy palette — readable on both light and dark Telegram themes
-const PALETTE = [
-  '#c8553d', '#3f7d6e', '#d9a23b', '#4d6a94',
-  '#9a6b8f', '#7d8a4a', '#b0734a', '#6b6f78',
-];
+const PALETTE = ['#c8553d', '#3f7d6e', '#d9a23b', '#4d6a94', '#9a6b8f', '#7d8a4a', '#b0734a', '#6b6f78'];
 
 /* ---------- helpers ---------- */
+const inr = (n, dp = 2) => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+const shortDate = (iso) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
-const inr = (n, dp = 2) =>
-  Number(n || 0).toLocaleString('en-IN', {
-    minimumFractionDigits: dp,
-    maximumFractionDigits: dp,
-  });
+// Check if a database timestamp matches today in India
+const isToday = (iso) => {
+  const d = new Date(iso).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const t = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+  return d === t;
+};
 
-const shortDate = (iso) =>
-  new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-
-// [{ name, value }] -> sorted, with share % and a colour each
 function toSlices(list) {
   const clean = list
     .map((s) => ({ name: s.name, value: Number(s.value) }))
@@ -39,14 +34,13 @@ function toSlices(list) {
 }
 
 /* ---------- breakdown (horizontal stacked bar) ---------- */
-
 function Breakdown({ slices }) {
   const [hoverId, setHoverId] = useState(null);
 
   if (!slices.length) {
     return (
       <div className="status">
-        <p>Nothing to show yet.</p>
+        <p>No expenses logged today.</p>
       </div>
     );
   }
@@ -58,16 +52,11 @@ function Breakdown({ slices }) {
           <div
             key={s.name}
             className="bar-seg"
-            style={{
-              width: `${s.pct}%`,
-              background: s.color,
-              opacity: hoverId && hoverId !== s.name ? 0.2 : 1,
-            }}
+            style={{ width: `${s.pct}%`, background: s.color, opacity: hoverId && hoverId !== s.name ? 0.2 : 1 }}
             onMouseEnter={() => setHoverId(s.name)}
           />
         ))}
       </div>
-
       <ul className="rows">
         {slices.map((s) => (
           <li
@@ -88,7 +77,6 @@ function Breakdown({ slices }) {
 }
 
 /* ---------- app ---------- */
-
 function App() {
   const [tgUser, setTgUser] = useState(null);
   const [expenses, setExpenses] = useState([]);
@@ -100,12 +88,17 @@ function App() {
   const [analyzing, setAnalyzing] = useState(false);
   const [aiError, setAiError] = useState('');
 
+  // 1. Core Data Filter: Isolate today's expenses for accurate daily math
+  const todayExpenses = expenses.filter(exp => isToday(exp.created_at));
+
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
     tg?.ready();
     tg?.expand();
+    tg?.setHeaderColor('#0b0c0e');
+    tg?.setBackgroundColor('#0b0c0e');
 
-    let username = 'saron_mani';
+    let username = 'Anonymous';
     if (tg?.initDataUnsafe?.user) {
       username = tg.initDataUnsafe.user.username || tg.initDataUnsafe.user.first_name;
     }
@@ -131,27 +124,28 @@ function App() {
       const response = await fetch('https://ledger-online-bot.saron2code.workers.dev/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expenses }),
+        // Only send today's expenses to the AI to save tokens and maintain accuracy
+        body: JSON.stringify({ expenses: todayExpenses }),
       });
 
       const rawText = await response.text();
 
       let data;
-      try {
-        data = JSON.parse(rawText);
-      } catch (parseErr) {
-        setAiError(`Cloudflare HTML Error: ${response.status}\n${rawText.substring(0, 40)}...`);
-        setAnalyzing(false);
-        return;
+      try { data = JSON.parse(rawText); } 
+      catch (parseErr) {
+        setAiError(`Cloudflare Error: ${response.status}`);
+        setAnalyzing(false); return;
       }
 
       if (!response.ok) {
         setAiError(`Worker Error: ${data.error || 'Unknown Server Crash'}`);
-        setAnalyzing(false);
-        return;
+        setAnalyzing(false); return;
       }
 
-      const cleanString = data.analysis.replace(/```json/g, '').replace(/```/g, '').trim();
+      // Surgically extract the JSON array ignoring polite AI text
+      const startIndex = data.analysis.indexOf('{');
+      const endIndex = data.analysis.lastIndexOf('}');
+      const cleanString = data.analysis.substring(startIndex, endIndex + 1);
       const parsedData = JSON.parse(cleanString);
 
       const formattedForChart = Object.keys(parsedData).map((key) => ({
@@ -168,23 +162,22 @@ function App() {
 
   function selectView(next) {
     setView(next);
-    if (next === 'ai' && !aiChartData && !analyzing) categorizeExpenses();
+    if (next === 'ai' && !aiChartData && !analyzing && todayExpenses.length > 0) categorizeExpenses();
   }
 
-  /* ---- derived ---- */
-  const accountTotals = expenses.reduce((acc, curr) => {
+  /* ---- derived math STRICTLY for today ---- */
+  const accountTotals = todayExpenses.reduce((acc, curr) => {
     acc[curr.account] = (acc[curr.account] || 0) + Number(curr.amount);
     return acc;
   }, {});
 
-  const accountSlices = toSlices(
-    Object.keys(accountTotals).map((key) => ({ name: key, value: accountTotals[key] }))
-  );
+  const accountSlices = toSlices(Object.keys(accountTotals).map((key) => ({ name: key, value: accountTotals[key] })));
   const aiSlices = aiChartData ? toSlices(aiChartData) : [];
 
   const grandTotal = accountSlices.reduce((sum, s) => sum + s.value, 0);
   const [whole, frac] = inr(grandTotal).split('.');
-  const since = expenses.length ? shortDate(expenses[expenses.length - 1].created_at) : null;
+  
+  // History log data
   const visible = showAll ? expenses : expenses.slice(0, 5);
 
   /* ---- breakdown panel body ---- */
@@ -193,16 +186,14 @@ function App() {
     breakdown = (
       <div className="status" role="status">
         <div className="progress" />
-        <p>Sorting {expenses.length} entries into categories</p>
+        <p>Sorting {todayExpenses.length} entries into categories</p>
       </div>
     );
   } else if (view === 'ai' && aiError) {
     breakdown = (
       <div className="status is-error">
         <p>{aiError}</p>
-        <button className="ghost-btn" onClick={categorizeExpenses}>
-          Try again
-        </button>
+        <button className="ghost-btn" onClick={categorizeExpenses}>Try again</button>
       </div>
     );
   } else if (view === 'ai' && aiChartData) {
@@ -214,10 +205,7 @@ function App() {
   return (
     <main className="app fade">
       <header className="masthead">
-        <span className="brand">
-          <span className="brand-dot"/>
-          Ledger
-        </span>
+        <span className="brand"><span className="brand-dot"/> Ledger</span>
         <span className="handle">{tgUser ? `@${tgUser}` : ''}</span>
       </header>
 
@@ -229,44 +217,34 @@ function App() {
           <div className="sk sk-bar" />
           <div className="sk sk-row" />
           <div className="sk sk-row" />
-          <div className="sk sk-row" />
         </div>
       ) : (
         <>
           <section className="hero fade">
-            <p className="eyebrow">Total spent</p>
+            <p className="eyebrow">EXPENSE TODAY</p>
             <p className="amount">
-              <span className="cur">₹</span>
-              {whole}
-              <span className="frac">.{frac}</span>
+              <span className="cur">₹</span>{whole}<span className="frac">.{frac}</span>
             </p>
             <p className="meta">
-              {expenses.length} {expenses.length === 1 ? 'entry' : 'entries'}
-              {since ? ` · since ${since}` : ''}
+              {todayExpenses.length} {todayExpenses.length === 1 ? 'entry' : 'entries'} today
             </p>
           </section>
 
           {expenses.length === 0 ? (
             <section className="fade">
-              <div className="status">
-                <p>No expenses yet. Log one with the bot and it will show up here.</p>
-              </div>
+              <div className="status"><p>No expenses yet. Log one with the bot and it will show up here.</p></div>
             </section>
           ) : (
             <>
               <section className="fade">
-                <div className="tabs" role="tablist" aria-label="Group spending by">
-                  <button
-                    role="tab"
-                    aria-selected={view === 'account'}
-                    onClick={() => selectView('account')}
-                  >
+                <div className="tabs" role="tablist">
+                  <button role="tab" aria-selected={view === 'account'} onClick={() => selectView('account')}>
                     Accounts
                   </button>
-                  <button
-                    role="tab"
-                    aria-selected={view === 'ai'}
-                    onClick={() => selectView('ai')}
+                  <button 
+                    role="tab" 
+                    aria-selected={view === 'ai'} 
+                    onClick={() => selectView('ai')} 
                     disabled={analyzing && view !== 'ai'}
                   >
                     Categories {view === 'account' && <span className="tag">AI</span>}
@@ -277,7 +255,7 @@ function App() {
 
               <section className="fade" style={{ marginTop: '24px' }}>
                 <div className="section-head">
-                  <h2 className="section-label">Recent</h2>
+                  <h2 className="section-label">Recent History</h2>
                   {expenses.length > 5 && (
                     <button className="link-btn" onClick={() => setShowAll((v) => !v)}>
                       {showAll ? 'Show less' : `View all (${expenses.length})`}
@@ -289,9 +267,7 @@ function App() {
                     <li key={exp.id} className="tx">
                       <div>
                         <div className="tx-cat">{exp.category}</div>
-                        <div className="tx-sub">
-                          {exp.account} · {shortDate(exp.created_at)}
-                        </div>
+                        <div className="tx-sub">{exp.account} · {shortDate(exp.created_at)}</div>
                       </div>
                       <span className="tx-amt">₹{inr(exp.amount)}</span>
                     </li>
