@@ -4,8 +4,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recha
 import './App.css';
 
 // ⚠️ KEEP YOUR SUPABASE CREDENTIALS HERE
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://aawelgmbvxqzdzxazjyg.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhd2VsZ21idnhxemR6eGF6anlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MDExOTAsImV4cCI6MjEwNzQ3NzE5MH0.Vp-b6pZc0gJxxrYvTPjsxmAiLgR7sYPoB5h32XNrjTM';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#A28DFF'];
@@ -25,7 +25,7 @@ function App() {
     tg.ready();
     tg.expand(); 
 
-    let username = 'Anonymous';
+    let username = 'saron_mani';
     if (tg.initDataUnsafe?.user) {
       username = tg.initDataUnsafe.user.username || tg.initDataUnsafe.user.first_name;
     }
@@ -55,13 +55,29 @@ function App() {
         body: JSON.stringify({ expenses })
       });
       
-      const data = await response.json();
+      // 1. Read the raw response first to catch HTML error pages
+      const rawText = await response.text();
       
-      // LLMs occasionally wrap responses in markdown (```json ... ```). This cleans it up.
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        setAiError(`Cloudflare HTML Error: ${response.status} - ${rawText.substring(0, 40)}...`);
+        setAnalyzing(false);
+        return;
+      }
+
+      // 2. Catch JSON errors from the Worker (like a 500 crash)
+      if (!response.ok) {
+        setAiError(`Worker Error: ${data.error || 'Unknown Server Crash'}`);
+        setAnalyzing(false);
+        return;
+      }
+      
+      // 3. Process the AI text if successful
       const cleanString = data.analysis.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsedData = JSON.parse(cleanString);
       
-      // Convert {"Food": 150, "Transport": 20} into Recharts format
       const formattedForChart = Object.keys(parsedData).map(key => ({
         name: key,
         value: Number(parsedData[key])
@@ -69,8 +85,7 @@ function App() {
 
       setAiChartData(formattedForChart);
     } catch (err) {
-      setAiError('Failed to parse AI categories. Please try again.');
-      console.error(err);
+      setAiError(`Frontend Error: ${err.message}`);
     }
     setAnalyzing(false);
   }
