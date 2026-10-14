@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import './App.css';
 
 // ⚠️ KEEP YOUR SUPABASE CREDENTIALS HERE
@@ -10,14 +9,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Muted, earthy palette — readable on both light and dark Telegram themes
 const PALETTE = [
-  '#c8553d', // terracotta
-  '#3f7d6e', // sage
-  '#d9a23b', // ochre
-  '#4d6a94', // slate blue
-  '#9a6b8f', // plum
-  '#7d8a4a', // olive
-  '#b0734a', // clay
-  '#6b6f78', // graphite
+  '#c8553d', '#3f7d6e', '#d9a23b', '#4d6a94',
+  '#9a6b8f', '#7d8a4a', '#b0734a', '#6b6f78',
 ];
 
 /* ---------- helpers ---------- */
@@ -45,9 +38,11 @@ function toSlices(list) {
   }));
 }
 
-/* ---------- donut + legend ---------- */
+/* ---------- breakdown (horizontal stacked bar) ---------- */
 
 function Breakdown({ slices }) {
+  const [hoverId, setHoverId] = useState(null);
+
   if (!slices.length) {
     return (
       <div className="status">
@@ -56,44 +51,35 @@ function Breakdown({ slices }) {
     );
   }
 
-  const lead = slices[0];
-
   return (
-    <div className="breakdown">
-      <div className="donut">
-        <ResponsiveContainer width="100%" height={196}>
-          <PieChart>
-            <Pie
-              data={slices}
-              dataKey="value"
-              nameKey="name"
-              innerRadius={66}
-              outerRadius={88}
-              paddingAngle={slices.length > 1 ? 3 : 0}
-              cornerRadius={3}
-              startAngle={90}
-              endAngle={-270}
-              stroke="none"
-            >
-              {slices.map((s) => (
-                <Cell key={s.name} fill={s.color} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="donut-center">
-          <span className="dc-pct num">{Math.round(lead.pct)}%</span>
-          <span className="dc-label">{lead.name}</span>
-        </div>
+    <div className="breakdown" onMouseLeave={() => setHoverId(null)}>
+      <div className="bar">
+        {slices.map((s) => (
+          <div
+            key={s.name}
+            className="bar-seg"
+            style={{
+              width: `${s.pct}%`,
+              background: s.color,
+              opacity: hoverId && hoverId !== s.name ? 0.2 : 1,
+            }}
+            onMouseEnter={() => setHoverId(s.name)}
+          />
+        ))}
       </div>
 
-      <ul className="legend">
+      <ul className="rows">
         {slices.map((s) => (
-          <li key={s.name}>
+          <li
+            key={s.name}
+            className="row"
+            data-dim={hoverId && hoverId !== s.name}
+            onMouseEnter={() => setHoverId(s.name)}
+          >
             <span className="swatch" style={{ background: s.color }} />
-            <span className="lg-name">{s.name}</span>
-            <span className="lg-val num">₹{inr(s.value, 0)}</span>
-            <span className="lg-pct num">{s.pct < 1 ? '<1%' : `${Math.round(s.pct)}%`}</span>
+            <span className="row-name">{s.name}</span>
+            <span className="row-val">₹{inr(s.value, 0)}</span>
+            <span className="row-pct">{s.pct < 1 ? '<1%' : `${Math.round(s.pct)}%`}</span>
           </li>
         ))}
       </ul>
@@ -119,7 +105,7 @@ function App() {
     tg?.ready();
     tg?.expand();
 
-    let username = 'Anonymous';
+    let username = 'saron_mani';
     if (tg?.initDataUnsafe?.user) {
       username = tg.initDataUnsafe.user.username || tg.initDataUnsafe.user.first_name;
     }
@@ -148,26 +134,23 @@ function App() {
         body: JSON.stringify({ expenses }),
       });
 
-      // 1. Read the raw response first to catch HTML error pages
       const rawText = await response.text();
 
       let data;
       try {
         data = JSON.parse(rawText);
       } catch (parseErr) {
-        setAiError(`Cloudflare HTML Error: ${response.status} - ${rawText.substring(0, 40)}...`);
+        setAiError(`Cloudflare HTML Error: ${response.status}\n${rawText.substring(0, 40)}...`);
         setAnalyzing(false);
         return;
       }
 
-      // 2. Catch JSON errors from the Worker (like a 500 crash)
       if (!response.ok) {
         setAiError(`Worker Error: ${data.error || 'Unknown Server Crash'}`);
         setAnalyzing(false);
         return;
       }
 
-      // 3. Process the AI text if successful
       const cleanString = data.analysis.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsedData = JSON.parse(cleanString);
 
@@ -189,7 +172,6 @@ function App() {
   }
 
   /* ---- derived ---- */
-
   const accountTotals = expenses.reduce((acc, curr) => {
     acc[curr.account] = (acc[curr.account] || 0) + Number(curr.amount);
     return acc;
@@ -203,11 +185,9 @@ function App() {
   const grandTotal = accountSlices.reduce((sum, s) => sum + s.value, 0);
   const [whole, frac] = inr(grandTotal).split('.');
   const since = expenses.length ? shortDate(expenses[expenses.length - 1].created_at) : null;
-
   const visible = showAll ? expenses : expenses.slice(0, 5);
 
   /* ---- breakdown panel body ---- */
-
   let breakdown = null;
   if (view === 'ai' && analyzing) {
     breakdown = (
@@ -232,21 +212,28 @@ function App() {
   }
 
   return (
-    <main className="app">
-      <header className="masthead rise">
-        <span className="wordmark">Ledger</span>
+    <main className="app fade">
+      <header className="masthead">
+        <span className="brand">
+          <span className="brand-dot"/>
+          Ledger
+        </span>
         <span className="handle">{tgUser ? `@${tgUser}` : ''}</span>
       </header>
 
       {loading ? (
-        <>
+        <div className="fade">
+          <div className="sk sk-label" />
           <div className="sk sk-total" />
           <div className="sk sk-meta" />
-          <div className="sk sk-panel" />
-        </>
+          <div className="sk sk-bar" />
+          <div className="sk sk-row" />
+          <div className="sk sk-row" />
+          <div className="sk sk-row" />
+        </div>
       ) : (
         <>
-          <section className="total rise d1">
+          <section className="hero fade">
             <p className="eyebrow">Total spent</p>
             <p className="amount">
               <span className="cur">₹</span>
@@ -260,15 +247,15 @@ function App() {
           </section>
 
           {expenses.length === 0 ? (
-            <section className="panel rise d2">
+            <section className="fade">
               <div className="status">
                 <p>No expenses yet. Log one with the bot and it will show up here.</p>
               </div>
             </section>
           ) : (
             <>
-              <section className="panel rise d2">
-                <div className="seg" data-view={view} role="tablist" aria-label="Group spending by">
+              <section className="fade">
+                <div className="tabs" role="tablist" aria-label="Group spending by">
                   <button
                     role="tab"
                     aria-selected={view === 'account'}
@@ -282,18 +269,18 @@ function App() {
                     onClick={() => selectView('ai')}
                     disabled={analyzing && view !== 'ai'}
                   >
-                    Categories <span className="tag">AI</span>
+                    Categories {view === 'account' && <span className="tag">AI</span>}
                   </button>
                 </div>
                 {breakdown}
               </section>
 
-              <section className="panel rise d3">
-                <div className="panel-head">
-                  <h2 className="panel-title">Recent</h2>
+              <section className="fade" style={{ marginTop: '24px' }}>
+                <div className="section-head">
+                  <h2 className="section-label">Recent</h2>
                   {expenses.length > 5 && (
                     <button className="link-btn" onClick={() => setShowAll((v) => !v)}>
-                      {showAll ? 'Show less' : `Show all ${expenses.length}`}
+                      {showAll ? 'Show less' : `View all (${expenses.length})`}
                     </button>
                   )}
                 </div>
@@ -306,7 +293,7 @@ function App() {
                           {exp.account} · {shortDate(exp.created_at)}
                         </div>
                       </div>
-                      <span className="tx-amt num">₹{inr(exp.amount)}</span>
+                      <span className="tx-amt">₹{inr(exp.amount)}</span>
                     </li>
                   ))}
                 </ul>
