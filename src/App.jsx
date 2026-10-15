@@ -11,7 +11,11 @@ const PALETTE = ['#c8553d', '#3f7d6e', '#d9a23b', '#4d6a94', '#9a6b8f', '#7d8a4a
 
 /* ---------- helpers ---------- */
 const inr = (n, dp = 2) => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: dp, maximumFractionDigits: dp });
-const shortDate = (iso) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+const shortDate = (iso) => new Date(iso).toLocaleDateString('en-IN', { 
+  timeZone: 'Asia/Kolkata', 
+  day: 'numeric', 
+  month: 'short' 
+});
 
 // Check if a database timestamp matches today in India
 // Strict 12:00 AM to 11:59 PM boundary check in Indian Standard Time (IST)
