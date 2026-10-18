@@ -11,24 +11,16 @@ const PALETTE = ['#c8553d', '#3f7d6e', '#d9a23b', '#4d6a94', '#9a6b8f', '#7d8a4a
 
 /* ---------- helpers ---------- */
 const inr = (n, dp = 2) => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: dp, maximumFractionDigits: dp });
-const shortDate = (iso) => new Date(iso).toLocaleDateString('en-IN', { 
-  timeZone: 'Asia/Kolkata', 
-  day: 'numeric', 
-  month: 'short' 
-});
+const shortDate = (iso) => new Date(iso).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
 
-// Check if a database timestamp matches today in India
-// Strict 12:00 AM to 11:59 PM boundary check in Indian Standard Time (IST)
 const isToday = (isoString) => {
   const now = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Kolkata"}));
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   
-  // Create strict timestamps for 12:00:00 AM and 11:59:59 PM in IST
   const todayStart = new Date(`${year}-${month}-${day}T00:00:00+05:30`).getTime();
   const todayEnd = new Date(`${year}-${month}-${day}T23:59:59+05:30`).getTime();
-  
   const expTime = new Date(isoString).getTime();
   return expTime >= todayStart && expTime <= todayEnd;
 };
@@ -52,9 +44,7 @@ function Breakdown({ slices }) {
 
   if (!slices.length) {
     return (
-      <div className="status">
-        <p>No expenses logged today.</p>
-      </div>
+      <div className="status"><p>No expenses logged today.</p></div>
     );
   }
 
@@ -62,22 +52,12 @@ function Breakdown({ slices }) {
     <div className="breakdown" onMouseLeave={() => setHoverId(null)}>
       <div className="bar">
         {slices.map((s) => (
-          <div
-            key={s.name}
-            className="bar-seg"
-            style={{ width: `${s.pct}%`, background: s.color, opacity: hoverId && hoverId !== s.name ? 0.2 : 1 }}
-            onMouseEnter={() => setHoverId(s.name)}
-          />
+          <div key={s.name} className="bar-seg" style={{ width: `${s.pct}%`, background: s.color, opacity: hoverId && hoverId !== s.name ? 0.2 : 1 }} onMouseEnter={() => setHoverId(s.name)} />
         ))}
       </div>
       <ul className="rows">
         {slices.map((s) => (
-          <li
-            key={s.name}
-            className="row"
-            data-dim={hoverId && hoverId !== s.name}
-            onMouseEnter={() => setHoverId(s.name)}
-          >
+          <li key={s.name} className="row" data-dim={hoverId && hoverId !== s.name} onMouseEnter={() => setHoverId(s.name)}>
             <span className="swatch" style={{ background: s.color }} />
             <span className="row-name">{s.name}</span>
             <span className="row-val">₹{inr(s.value, 0)}</span>
@@ -96,12 +76,11 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
 
-  const [view, setView] = useState('account'); // 'account' | 'ai'
+  const [view, setView] = useState('account');
   const [aiChartData, setAiChartData] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiError, setAiError] = useState('');
 
-  // 1. Core Data Filter: Isolate today's expenses for accurate daily math
   const todayExpenses = expenses.filter(exp => isToday(exp.created_at));
 
   useEffect(() => {
@@ -120,12 +99,7 @@ function App() {
   }, []);
 
   async function fetchExpenses(username) {
-    const { data, error } = await supabase
-      .from('expenses')
-      .select('*')
-      .eq('username', username)
-      .order('created_at', { ascending: false });
-
+    const { data, error } = await supabase.from('expenses').select('*').eq('username', username).order('created_at', { ascending: false });
     if (!error && data) setExpenses(data);
     setLoading(false);
   }
@@ -134,30 +108,24 @@ function App() {
     setAnalyzing(true);
     setAiError('');
     try {
+      // Only send POSITIVE expenses to the AI to prevent income from confusing the categories
+      const chartableExpenses = todayExpenses.filter(e => e.amount > 0);
+      
       const response = await fetch('https://ledger-online-bot.saron2code.workers.dev/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Only send today's expenses to the AI to save tokens and maintain accuracy
-        body: JSON.stringify({ expenses: todayExpenses }),
+        body: JSON.stringify({ expenses: chartableExpenses }),
       });
 
       const rawText = await response.text();
-
       let data;
       try { data = JSON.parse(rawText); } 
-      catch (parseErr) {
-        setAiError(`Cloudflare Error: ${response.status}`);
-        setAnalyzing(false); return;
-      }
+      catch (parseErr) { setAiError(`Cloudflare Error: ${response.status}`); setAnalyzing(false); return; }
 
-      if (!response.ok) {
-        setAiError(`Worker Error: ${data.error || 'Unknown Server Crash'}`);
-        setAnalyzing(false); return;
-      }
+      if (!response.ok) { setAiError(`Worker Error: ${data.error || 'Unknown Server Crash'}`); setAnalyzing(false); return; }
 
-      // Surgically extract the JSON array ignoring polite AI text
       const startIndex = data.analysis.indexOf('{');
-      const endIndex = data.analysis.lastIndexOf('}');
+      const endIndex = data.lastIndexOf('}');
       const cleanString = data.analysis.substring(startIndex, endIndex + 1);
       const parsedData = JSON.parse(cleanString);
 
@@ -175,12 +143,22 @@ function App() {
 
   function selectView(next) {
     setView(next);
-    if (next === 'ai' && !aiChartData && !analyzing && todayExpenses.length > 0) categorizeExpenses();
+    if (next === 'ai' && !aiChartData && !analyzing && todayExpenses.filter(e=>e.amount > 0).length > 0) categorizeExpenses();
   }
 
-  /* ---- derived math STRICTLY for today ---- */
+  /* ---- Analytics & Balances ---- */
+  
+  // 1. Calculate Live Pocket Money Balance across all time
+  // Balance = Total Credits (-amount) minus Total Savings Expenses (+amount)
+  const savingsBalance = expenses
+    .filter(e => e.account === 'Savings')
+    .reduce((sum, e) => sum - e.amount, 0);
+
+  // 2. Account Totals for Charts (Only count positive expenses)
   const accountTotals = todayExpenses.reduce((acc, curr) => {
-    acc[curr.account] = (acc[curr.account] || 0) + Number(curr.amount);
+    if (curr.amount > 0) {
+      acc[curr.account] = (acc[curr.account] || 0) + Number(curr.amount);
+    }
     return acc;
   }, {});
 
@@ -190,7 +168,6 @@ function App() {
   const grandTotal = accountSlices.reduce((sum, s) => sum + s.value, 0);
   const [whole, frac] = inr(grandTotal).split('.');
   
-  // History log data
   const visible = showAll ? expenses : expenses.slice(0, 5);
 
   /* ---- breakdown panel body ---- */
@@ -199,7 +176,7 @@ function App() {
     breakdown = (
       <div className="status" role="status">
         <div className="progress" />
-        <p>Sorting {todayExpenses.length} entries into categories</p>
+        <p>Sorting entries into categories</p>
       </div>
     );
   } else if (view === 'ai' && aiError) {
@@ -227,9 +204,6 @@ function App() {
           <div className="sk sk-label" />
           <div className="sk sk-total" />
           <div className="sk sk-meta" />
-          <div className="sk sk-bar" />
-          <div className="sk sk-row" />
-          <div className="sk sk-row" />
         </div>
       ) : (
         <>
@@ -239,8 +213,13 @@ function App() {
               <span className="cur">₹</span>{whole}<span className="frac">.{frac}</span>
             </p>
             <p className="meta">
-              {todayExpenses.length} {todayExpenses.length === 1 ? 'entry' : 'entries'} today
+              {todayExpenses.filter(e => e.amount > 0).length} expense entries today
             </p>
+            
+            {/* Dynamic Savings Balance Pill */}
+            <div style={{ marginTop: '16px', display: 'inline-block', padding: '6px 14px', background: 'rgba(200, 241, 105, 0.08)', color: 'var(--accent)', borderRadius: '20px', fontSize: '13px', fontWeight: '500', fontFamily: 'var(--mono)', border: '1px solid rgba(200, 241, 105, 0.15)' }}>
+              Savings Balance: ₹{inr(savingsBalance)}
+            </div>
           </section>
 
           {expenses.length === 0 ? (
@@ -276,15 +255,21 @@ function App() {
                   )}
                 </div>
                 <ul className="tx-list">
-                  {visible.map((exp) => (
-                    <li key={exp.id} className="tx">
-                      <div>
-                        <div className="tx-cat">{exp.category}</div>
-                        <div className="tx-sub">{exp.account} · {shortDate(exp.created_at)}</div>
-                      </div>
-                      <span className="tx-amt">₹{inr(exp.amount)}</span>
-                    </li>
-                  ))}
+                  {visible.map((exp) => {
+                    const isCredit = exp.amount < 0;
+                    return (
+                      <li key={exp.id} className="tx">
+                        <div>
+                          <div className="tx-cat">{exp.category}</div>
+                          <div className="tx-sub">{exp.account} · {shortDate(exp.created_at)}</div>
+                        </div>
+                        {/* Highlights credits in green and standard expenses in white */}
+                        <span className="tx-amt" style={{ color: isCredit ? 'var(--accent)' : 'inherit' }}>
+                          {isCredit ? '+' : ''}₹{inr(Math.abs(exp.amount))}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             </>
