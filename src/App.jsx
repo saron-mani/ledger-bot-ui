@@ -108,7 +108,6 @@ function App() {
     setAnalyzing(true);
     setAiError('');
     try {
-      // Only send POSITIVE expenses to the AI to prevent income from confusing the categories
       const chartableExpenses = todayExpenses.filter(e => e.amount > 0);
       
       const response = await fetch('https://ledger-online-bot.saron2code.workers.dev/api/analyze', {
@@ -119,15 +118,21 @@ function App() {
 
       const rawText = await response.text();
       let data;
-      try { data = JSON.parse(rawText); } 
-      catch (parseErr) { setAiError(`Cloudflare Error: ${response.status}`); setAnalyzing(false); return; }
+      try { 
+        data = JSON.parse(rawText); 
+      } catch (parseErr) { 
+        setAiError(`Cloudflare Error: ${response.status}`); 
+        setAnalyzing(false); 
+        return; 
+      }
 
-      if (!response.ok) { setAiError(`Worker Error: ${data.error || 'Unknown Server Crash'}`); setAnalyzing(false); return; }
+      if (!response.ok) { 
+        setAiError(`Worker Error: ${data.error || 'Unknown Server Crash'}`); 
+        setAnalyzing(false); 
+        return; 
+      }
 
-      const startIndex = data.analysis.indexOf('{');
-      const endIndex = data.lastIndexOf('}');
-      const cleanString = data.analysis.substring(startIndex, endIndex + 1);
-      const parsedData = JSON.parse(cleanString);
+      const parsedData = JSON.parse(data.analysis);
 
       const formattedForChart = Object.keys(parsedData).map((key) => ({
         name: key,
@@ -147,14 +152,10 @@ function App() {
   }
 
   /* ---- Analytics & Balances ---- */
-  
-  // 1. Calculate Live Pocket Money Balance across all time
-  // Balance = Total Credits (-amount) minus Total Savings Expenses (+amount)
   const savingsBalance = expenses
     .filter(e => e.account === 'Savings')
     .reduce((sum, e) => sum - e.amount, 0);
 
-  // 2. Account Totals for Charts (Only count positive expenses)
   const accountTotals = todayExpenses.reduce((acc, curr) => {
     if (curr.amount > 0) {
       acc[curr.account] = (acc[curr.account] || 0) + Number(curr.amount);
@@ -215,11 +216,6 @@ function App() {
             <p className="meta">
               {todayExpenses.filter(e => e.amount > 0).length} expense entries today
             </p>
-            
-            {/* Dynamic Savings Balance Pill */}
-            <div style={{ marginTop: '16px', display: 'inline-block', padding: '6px 14px', background: 'rgba(200, 241, 105, 0.08)', color: 'var(--accent)', borderRadius: '20px', fontSize: '13px', fontWeight: '500', fontFamily: 'var(--mono)', border: '1px solid rgba(200, 241, 105, 0.15)' }}>
-              Savings Balance: ₹{inr(savingsBalance)}
-            </div>
           </section>
 
           {expenses.length === 0 ? (
@@ -243,6 +239,13 @@ function App() {
                   </button>
                 </div>
                 {breakdown}
+                
+                {/* 🚨 Tucked away Savings Balance inside the Accounts tab */}
+                {view === 'account' && (
+                  <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '12px', color: 'var(--muted)', fontFamily: 'var(--mono)' }}>
+                    Available Savings: ₹{inr(savingsBalance)}
+                  </div>
+                )}
               </section>
 
               <section className="fade" style={{ marginTop: '24px' }}>
@@ -263,7 +266,6 @@ function App() {
                           <div className="tx-cat">{exp.category}</div>
                           <div className="tx-sub">{exp.account} · {shortDate(exp.created_at)}</div>
                         </div>
-                        {/* Highlights credits in green and standard expenses in white */}
                         <span className="tx-amt" style={{ color: isCredit ? 'var(--accent)' : 'inherit' }}>
                           {isCredit ? '+' : ''}₹{inr(Math.abs(exp.amount))}
                         </span>
